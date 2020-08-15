@@ -1,5 +1,6 @@
 # CurlingAI
 National College Student Digital Curling Artificial Intelligence Challenge
+
 My Player为最终代码
 先手方有两个策略
 后手方有三个策略
