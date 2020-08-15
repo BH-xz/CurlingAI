@@ -1,0 +1,1024 @@
+import socket 
+import time
+import numpy as np
+#python 与客户端连接
+host='127.0.0.1'
+port=7788
+obj=socket.socket()
+obj.connect((host,port))
+#初始化
+shotnum=str("0")
+order=str("Player1")#先后手
+state=[]
+obstr=0
+myscore=0
+plan_flag=None
+#与大本营中心距离
+def get_dist(pos):
+    return (pos[0]-2.375)**2+(pos[1]-4.88)**2
+def list_to_str(list):    
+    tmp=str(list)[1:-1].replace(',','')
+    res="BESTSHOT "+tmp
+    return res
+def find_target(dis_state,myorder): #对方最靠前的目标壶
+    target=[]
+    if myorder==str("first"):
+        if len(dis_state[1])>0:
+            ymax=dis_state[1][0][1]
+            index=0
+            for i in range(1,len(dis_state[1])):
+                if dis_state[1][i][1]>ymax:
+                    index=i
+                    ymax=dis_state[1][i][1]
+            target=dis_state[1][index]
+        return target
+    else:
+        if len(dis_state[0])>0:
+            ymax=dis_state[0][0][1]
+            index=0
+            for i in range(1,len(dis_state[0])):
+                if dis_state[0][i][1]>ymax:
+                    index=i
+                    ymax=dis_state[0][i][1]
+            target=dis_state[0][index]
+        return target
+def find_nexttarget(dis_state,myorder,target1): #在某一目标后对方最靠前的目标壶
+    target2=[]
+    if myorder==str("first"):
+        if len(dis_state[1])>1:
+            ymax=0
+            for i in range(0,len(dis_state[1])):
+                if dis_state[1][i][1]>ymax and dis_state[1][i][1]<target1[1]:
+                    index=i
+                    ymax=dis_state[1][i][1]
+            target2=dis_state[1][index]
+        return target2
+    else:
+        if len(dis_state[0])>1:
+            ymax=0
+            for i in range(0,len(dis_state[0])):
+                if dis_state[0][i][1]>ymax and dis_state[0][i][1]<target1[1]:
+                    index=i
+                    ymax=dis_state[0][i][1]
+            target2=dis_state[0][index]
+        return target2
+def is_danger(target,dis_state): #判断威胁性
+    is_danger_flag=True
+    if target in dis_state[0]:
+        distance=get_dist(target)
+        if distance>4.08 and target[1]<4.88:
+            is_danger_flag=False
+        elif np.fabs(target[0]-2.375)>2:
+            is_danger_flag=False
+        elif target[1]<4.7:
+            for i in range(0,len(dis_state[1])):
+                if dis_state[1][i][1]>target[1] and dis_state[1][i][1]<4.9:
+                    if np.fabs(target[0]-dis_state[1][i][0])<0.29:
+                        if get_dist(dis_state[1][i])<distance:
+                            is_danger_flag=False
+    elif target in dis_state[1]:
+        distance=get_dist(target)
+        if distance>4.08 and target[1]<4.88:
+            is_danger_flag=False
+        elif np.fabs(target[0]-2.375)>2:
+            is_danger_flag=False
+        elif target[1]<4.7:
+            for i in range(0,len(dis_state[0])):
+                if dis_state[0][i][1]>target[1] and dis_state[0][i][1]<4.9:
+                    if np.fabs(target[0]-dis_state[0][i][0])<0.29:
+                        if get_dist(dis_state[0][i])<distance:
+                            is_danger_flag=False
+    return is_danger_flag
+def find_danger(dis_state,myorder): #寻找最危险的壶
+    danger=[]
+    if myorder==str("first"):
+        if len(dis_state[1])>0:
+            dis_min=1000
+            index=None
+            for i in range(0,len(dis_state[1])):
+                distance=get_dist(dis_state[1][i])
+                if distance<dis_min:
+                    is_danger_f=True
+                    if np.fabs(2.375-dis_state[1][i][0])>2.01:
+                        is_danger_f=False
+                    elif dis_state[1][i][1]<4.88 and distance>4.08:
+                        is_danger_f=False
+                    elif dis_state[1][i][1]<4.5:
+                        for j in range(0,len(dis_state[0])):
+                            if dis_state[0][j][1]>dis_state[1][i][1] and dis_state[0][j][1]<4.8:
+                                if dis_state[0][j][0]>dis_state[1][i][0]-0.29 and dis_state[0][j][0]<dis_state[1][i][0]+0.29:
+                                    if get_dist(dis_state[0][j])<distance:
+                                        is_danger_f=False
+                    if is_danger_f:
+                        index=i
+                        dis_min=distance
+            if index!=None:
+                danger=dis_state[1][index]
+        return danger
+    else:
+        if len(dis_state[0])>0:
+            dis_min=1000
+            index=None
+            for i in range(0,len(dis_state[0])):
+                distance=get_dist(dis_state[0][i])
+                if distance<dis_min:
+                    is_danger_f=True
+                    if np.fabs(2.375-dis_state[0][i][0])>2.01:
+                        is_danger_f=False
+                    elif dis_state[0][i][1]<4.88 and distance>4.08:
+                        is_danger_f=False
+                    elif dis_state[0][i][1]<4.5:
+                        for j in range(0,len(dis_state[1])):
+                            if dis_state[1][j][1]>dis_state[0][i][1] and dis_state[1][j][1]<4.8:
+                                if dis_state[1][j][0]>dis_state[0][i][0]-0.29 and dis_state[1][j][0]<dis_state[0][i][0]+0.29:
+                                    if get_dist(dis_state[1][j])<distance:
+                                        is_danger_f=False
+                    if is_danger_f:
+                        index=i
+                        dis_min=distance
+            if index!=None:
+                danger=dis_state[0][index]
+        return danger
+def count_obs(dis_state,target):
+    obstacles=[[0,0,100,0],[]] #前方障碍数，后方障碍数,后方障碍最小距离、横坐标，前方障碍位置
+    for i in range(0,len(dis_state[0])):
+        if dis_state[0][i][0]>target[0]-0.292 and dis_state[0][i][0]<target[0]+0.292:
+            if dis_state[0][i][1]>target[1]:
+                obstacles[0][0]+=1
+                obstacles[1].append(dis_state[0][i])
+            elif dis_state[0][i][1]<target[1]-0.05:
+                obstacles[0][1]+=1
+                dist=np.sqrt((dis_state[0][i][0]-target[0])**2+(dis_state[0][i][1]-target[1])**2)
+                if dist<obstacles[0][2]:
+                    obstacles[0][2]=dist
+                    obstacles[0][3]=dis_state[0][i][0]
+    for i in range(0,len(dis_state[1])):
+        if dis_state[1][i][0]>target[0]-0.292 and dis_state[1][i][0]<target[0]+0.292:
+            if dis_state[1][i][1]>target[1]:
+                obstacles[0][0]+=1
+                obstacles[1].append(dis_state[1][i])
+            elif dis_state[1][i][1]<target[1]-0.05:
+                obstacles[0][1]+=1
+                dist=np.sqrt((dis_state[1][i][0]-target[0])**2+(dis_state[1][i][1]-target[1])**2)
+                if dist<obstacles[0][2]:
+                    obstacles[0][2]=dist
+                    obstacles[0][3]=dis_state[1][i][0]
+    return obstacles
+
+def throw(target): #直线落位模型
+    h_x=target[0]-2.3992
+    ve=3.215-(target[1]-3)*0.1176
+    if ve<2.405:
+        ve=2.405
+    bestshot=[ve,h_x,0]
+    return bestshot
+def push(target): #单壶推后模型
+    if target[1]<3.9:
+        ve=6.4-(target[1]-2.9)*0.25
+        h_x=target[0]-2.35
+    elif target[1]>9.8:
+        ve=4.6
+        h_x=target[0]-2.3497
+    else:
+        ve=4.75-(target[1]-9.7)**2/26-np.fabs(target[0]-2.375)*0.2+(target[1]-3.9)*0.01
+        h_x=target[0]-2.3497
+    bestshot=[ve,h_x,0]
+    return bestshot
+def push_center(target): #单壶推至中心线
+    if target[1]<4.6:
+        bestshot=[2.99,target[0]-2.3497,0]
+    else:
+        ve=-0.02602*target[1]**2+0.662*target[1]+0.5271
+        bestshot=[ve,target[0]-2.3497,0]
+    return bestshot
+def push_2(target1,target2): #双壶推至中心线
+    bestshot=[]
+    if target1[1]<target2[1]:  #target1在下
+        temp=target1
+        target1=target2
+        target2=temp
+    ve=-2.438+0.7928*target1[1]+0.8277*target2[1]-0.02249*target1[1]**2-0.04986*target1[1]*target2[1]
+    delta_x=2.375-target1[0]
+    offset=delta_x*0.12
+    if np.fabs(target2[0]-target1[0])>0.15:
+        ve-=(np.fabs(target2[0]-target1[0])-0.05)*1.2
+        if target1[1]-target2[1]<0.15:
+            offset+=(target2[0]-target1[0])*(0.45-target1[1]+target2[1])
+        else:
+            offset+=(target2[0]-target1[0])*0.02*(9.5-target1[1])
+    h_x=target1[0]-2.3497+offset
+    bestshot=[ve,h_x,0]
+    if bestshot[0]>0.002579*target1[1]**2-0.2197*target1[1]+6.675:
+        bestshot=[]
+    return bestshot
+def attack(target,dis_state): #常规进攻方式
+    obstacles=count_obs(dis_state,target)
+    if obstacles[0][0]==0:
+        if obstacles[0][1]==0:
+            bestshot=push(target)
+            bestshot[0]+=0.195
+        elif obstacles[0][1]<4:
+            if target[1]<5.9:
+                ve=6.25-(target[1]-2.9)*0.18
+                offset=-0.053 if target[0]>2.375 else 0.053
+                h_x=target[0]-2.35+offset
+                bestshot=[ve,h_x,0]
+            elif target[1]<8:
+                bestshot=push(target)
+                bestshot[0]+=0.27*obstacles[0][1]+0.12
+                if obstacles[0][2]<0.35:
+                    bestshot[0]=8
+            else:
+                offset=-0.175 if target[0]>2.375 else 0.175
+                h_x=target[0]-2.35+offset
+                bestshot=[7,h_x,0]
+        else:
+            h_x=target[0]-2.35
+            bestshot=[8,h_x,0]
+    elif obstacles[0][0]==1:
+        bestshot=attack_2(target,obstacles[1][0],dis_state)
+    else:
+        ym=0
+        index=0
+        for i in range(len(obstacles[1])):
+            if obstacles[1][i][1]>ym:
+                ym=obstacles[1][i][1]
+                index=i
+        bestshot=push(obstacles[1][index])
+        bestshot[0]+=0.32*obstacles[0][0]
+    return bestshot
+def attack_2(target1,target2,dis_state): #清除两壶模型
+    target1=np.array(target1)
+    target2=np.array(target2)
+    path=target2-target1
+    r=np.sqrt(path[0]**2+path[1]**2)
+    if r==0:
+        ph=0
+    else:
+        cos_ph=(target2[0]-target1[0])/r
+        ph=np.arccos(cos_ph)*180/np.pi
+    if np.fabs(ph-90)<45:
+        if r<3:
+            offset=0.1 if target1[0]<target2[0] else -0.1
+        else:
+            offset=0.035 if target1[0]<target2[0] else -0.035
+        target1[0]+=offset
+        path=target2-target1
+        normpath=path/np.sqrt(path[0]**2+path[1]**2)
+        h_x=target2[0]+0.28*normpath[0]-2.35
+        bestshot=[8,h_x,0]
+    else:
+        if r<0.35:
+            offset=-0.06 if target1[0]<target2[0] else 0.06
+            bestshot=[8,target2[0]+offset-2.35,0]
+        else:
+            angle=np.fabs(ph-90)-45
+            ve=angle*0.1+9
+            offset=0.3532-0.003563*angle-0.1508*r+0.04511*r**2
+            if offset>0.225:
+                offset=0.225
+            if target1[0]<target2[0]:
+                offset=-1*offset
+            h_x=target2[0]+offset-2.35
+            bestshot=[ve,h_x,0]
+    obstacles=count_obs(dis_state,[bestshot[1]+2.35,target2[1]])
+    if obstacles[0][0]>0:
+        bestshot=attack_2(target1,obstacles[1][0],dis_state)
+    return bestshot
+def attack_out(target,dis_state): #清除一壶
+    obstacles=count_obs(dis_state,target)
+    if obstacles[0][0]==0 and obstacles[0][1]==0:
+        bestshot=push(target)
+        bestshot[0]+=0.2
+    else:
+        offset=0.175 if target[0]<2.375 else -0.175
+        obstacles=count_obs(dis_state,[target[0]+offset,target[1]])
+        if obstacles[0][0]==0:
+            h_x=target[0]-2.35+offset
+            bestshot=[8,h_x,0]
+        else:
+            offset=-1*offset
+            obstacles=count_obs(dis_state,[target[0]+offset,target[1]])
+            if obstacles[0][0]==0:
+                h_x=target[0]-2.35+offset
+                bestshot=[8,h_x,0]
+            else:
+                bestshot=attack_2(target,obstacles[1][0],dis_state)
+    return bestshot
+def count_num(dis_state,myorder): #情况分析
+    both_score=[0,0,0,0,0]#己方得分，对方得分，圈内壶数，左线路壶数，右线路壶数
+    dis_min1=1000
+    dis_min2=1000
+    score=0
+    for i in range(0,len(dis_state[0])):
+        distance=get_dist(dis_state[0][i])
+        if distance<4:
+            both_score[2]+=1
+            if np.fabs((dis_state[0][i][1]+25.7435)/12.8941-dis_state[0][i][0])<0.35:
+                both_score[4]+=1
+            if np.fabs((dis_state[0][i][1]-32.31)/11.5495+dis_state[0][i][0])<0.35:
+                both_score[3]+=1
+        if distance<dis_min1:
+            dis_min1=distance
+    for i in range(0,len(dis_state[1])):
+        distance=get_dist(dis_state[1][i])
+        if distance<4:
+            both_score[2]+=1
+            if np.fabs((dis_state[1][i][1]+25.7435)/12.8941-dis_state[1][i][0])<0.35:
+                both_score[4]+=1
+            if np.fabs((dis_state[1][i][1]-32.31)/11.5495+dis_state[1][i][0])<0.35:
+                both_score[3]+=1
+        if distance<dis_min2:
+            dis_min2=distance
+    if dis_min1<dis_min2:#先手方有得分
+        index=0
+        for i in range(0,len(dis_state[0])):
+            distance=get_dist(dis_state[0][i])
+            if distance<dis_min2:
+                score+=1
+    else:
+        index=1
+        for i in range(0,len(dis_state[1])):
+            distance=get_dist(dis_state[1][i])
+            if distance<dis_min1:
+                score+=1
+    if myorder==str("first"):
+        both_score[index]=score
+    else:
+        both_score[(index+1)%2]=score
+    return both_score
+def lastshot(dis_state,myorder): #后手最后一壶
+    target=find_target(dis_state,myorder)
+    if not target:
+        bestshot=[]
+        for i in range(0,len(dis_state[1])):
+            if np.fabs(dis_state[1][i][0]-2.375)<1.2 and dis_state[1][i][1]>5.6:
+                bestshot=push_center(dis_state[1][i])
+                break
+        if not bestshot:
+            obstacles=count_obs(dis_state,[2.335,4.68])
+            if obstacles[0][0]==0:
+                bestshot=[2.99,-0.0242,0]
+            else:
+                bestshot=push(obstacles[1][0])
+                bestshot[0]=bestshot[0]-0.35
+    else:
+        bestshot=[]
+        target2=find_nexttarget(dis_state,myorder,target)
+        radius_2=get_dist(target)
+        obstacles=count_obs(dis_state,target)
+        if not target2:
+            if obstacles[0][0]==0:
+                if obstacles[0][1]==0:
+                    if radius_2<2.56:
+                        bestshot=[6.25-(target[1]-2.9)*0.1,(target[0]-2.35)*0.97,0]
+                    elif radius_2<4.08:
+                        bestshot=push(target)
+                        bestshot[0]+=0.195
+                elif obstacles[0][2]>0.35:
+                    if radius_2<2.56 and np.fabs(target[0]-2.375)<1.0:
+                        offset=-0.04 if obstacles[0][3]<target[0] else 0.04
+                        h_x=target[0]-2.35+offset
+                        bestshot=[6.25-(target[1]-2.9)*0.1,h_x,0]
+                else:
+                    possible_score=0
+                    for i in range(len(dis_state[1])):
+                        if get_dist(dis_state[1][i])<4.03:
+                            possible_score+=1
+                    if possible_score>1 and target[1]<4.88 and obstacles[0][1]==1 and np.fabs(obstacles[0][3]-target[0])<0.1:
+                        ve=-0.2465*target[1]**2+2.932*target[1]-3.174-np.fabs(target[0]-2.375)*0.23
+                        bestshot=[ve,target[0]-2.3497,0]
+                        
+        if not bestshot:
+            danger=find_danger(dis_state,myorder)
+            if not danger or danger==target:
+                if radius_2>4.08:
+                    bestshot=[]
+                    for i in range(0,len(dis_state[1])):
+                        if np.fabs(dis_state[1][i][0]-2.375)<1.2 and dis_state[1][i][1]>5.6:
+                            obstacles=count_obs(dis_state,dis_state[1][i])
+                            if obstacles[0][0]==0 and obstacles[0][1]==0:
+                                bestshot=push_center(dis_state[1][i])
+                                break
+                    if not bestshot:
+                        h_x=-1.0
+                        while h_x<1.1:
+                            obstacles=count_obs(dis_state,[2.35+h_x,4.58])
+                            if obstacles[0][0]==0:
+                                bestshot=[2.99,h_x,0]
+                                break
+                            h_x+=0.1
+                        if not bestshot:
+                            bestshot=attack(target,dis_state)
+                else:
+                    if target[1]<4.58:
+                        bestshot=[]
+                        safe_dist=np.sqrt(radius_2)
+                        for i in range(0,len(dis_state[1])):
+                            if np.fabs(dis_state[1][i][0]-2.375)<safe_dist-0.08 and dis_state[1][i][1]>5.2:
+                                bestshot=push_center(dis_state[1][i])
+                                obstacles=count_obs(dis_state,[dis_state[1][i][0],4.68])
+                                bestshot[0]+=0.3*(obstacles[0][0]-1)+0.03
+                                break
+                        if not bestshot:
+                            obstacles=count_obs(dis_state,[2.335,4.68])
+                            if obstacles[0][0]==0:
+                                bestshot=[2.99,-0.0242,0]
+                            else:
+                                bestshot=push_center(obstacles[1][0])
+                                bestshot[0]+=0.3*(obstacles[0][0]-1)+0.03
+                    else:
+                        obstacles=count_obs(dis_state,[2.375,4.35])
+                        if obstacles[0][0]==0:
+                            bestshot=[2.99,0.025,0]
+                        elif obstacles[0][0]==1:
+                            bestshot=push_center(obstacles[1][0])
+                        elif obstacles[0][0]==2:
+                            bestshot=push_2(obstacles[1][0],obstacles[1][1])
+                    if not bestshot:
+                        offset=-0.15
+                        while offset<0.15:
+                            left_o=0
+                            right_o=0
+                            for i in range(0,len(dis_state[0])):
+                                if np.fabs((dis_state[0][i][1]+25.7435)/12.8941-(dis_state[0][i][0]+offset))<0.35 and dis_state[0][i][1]>4.68:
+                                    right_o+=1
+                                if np.fabs((dis_state[0][i][1]-32.31)/11.5495+(dis_state[0][i][0]+offset))<0.35 and dis_state[0][i][1]>4.68:
+                                    left_o+=1
+                            for i in range(0,len(dis_state[1])):
+                                if np.fabs((dis_state[1][i][1]+25.7435)/12.8941-(dis_state[1][i][0]+offset))<0.35 and dis_state[1][i][1]>4.68:
+                                    right_o+=1
+                                if np.fabs((dis_state[1][i][1]-32.31)/11.5495+(dis_state[1][i][0]+offset))<0.35 and dis_state[1][i][1]>4.68:
+                                    left_o+=1
+                            if left_o==0:
+                                h_x=-1.5+offset
+                                bestshot=[3.08,h_x,10]
+                                break
+                            elif right_o==0:
+                                h_x=1.5+offset
+                                bestshot=[3.08,h_x,-10]
+                                break
+                            offset+=0.01
+                        if not bestshot:
+                            bestshot=attack(target,dis_state)
+            else:
+                obstacles=count_obs(dis_state,[2.375,4.35])
+                if obstacles[0][0]==0:
+                    bestshot=[2.99,0.025,0]
+                elif obstacles[0][0]==1:
+                    if obstacles[1][0] in dis_state[1]:
+                        bestshot=push_center(obstacles[1][0])
+                    elif obstacles[1][0][1]<6.89:
+                        bestshot=push_center(target)
+                        bestshot[0]+=0.03
+                    else:
+                        if get_dist(danger)<4.08:
+                            offset=-0.15
+                            while offset<0.15:
+                                left_o=0
+                                right_o=0
+                                for i in range(0,len(dis_state[0])):
+                                    if np.fabs((dis_state[0][i][1]+25.7435)/12.8941-(dis_state[0][i][0]+offset))<0.35 and dis_state[0][i][1]>4.68:
+                                        right_o+=1
+                                    if np.fabs((dis_state[0][i][1]-32.31)/11.5495+(dis_state[0][i][0]+offset))<0.35 and dis_state[0][i][1]>4.68:
+                                        left_o+=1
+                                for i in range(0,len(dis_state[1])):
+                                    if np.fabs((dis_state[1][i][1]+25.7435)/12.8941-(dis_state[1][i][0]+offset))<0.35 and dis_state[1][i][1]>4.68:
+                                        right_o+=1
+                                    if np.fabs((dis_state[1][i][1]-32.31)/11.5495+(dis_state[1][i][0]+offset))<0.35 and dis_state[1][i][1]>4.68:
+                                        left_o+=1
+                                if left_o==0:
+                                    h_x=-1.5+offset
+                                    bestshot=[3.08,h_x,10]
+                                    break
+                                elif right_o==0:
+                                    h_x=1.5+offset
+                                    bestshot=[3.08,h_x,-10]
+                                    break
+                                offset+=0.01
+                            if not bestshot:
+                                bestshot=attack(danger,dis_state)
+                        else:
+                            h_x=-0.9
+                            while h_x<1.0:
+                                obstacles=count_obs(dis_state,[2.35+h_x,4.68])
+                                if obstacles[0][0]==0:
+                                    bestshot=[2.99,h_x,0]
+                                    break
+                                h_x+=0.1
+                            if not bestshot:
+                                bestshot=attack(danger,dis_state)
+                elif obstacles[0][0]==2:
+                    bestshot=push_2(obstacles[1][0],obstacles[1][1])
+                    if not bestshot:
+                        both_score=count_num(dis_state,myorder)
+                        mysign=-1 if danger[0]<2.375 else 1
+                        pushnum=both_score[int(mysign/2+3.5)]
+                        ve=3.07+pushnum*0.25+(danger[1]-4.88)*0.2
+                        h_x=mysign*(1.49-(pushnum**2/8+3*pushnum/4)*0.01)
+                        bestshot=[ve,h_x,-10*mysign]
+                else:
+                    danger=find_danger(dis_state,myorder)
+                    if not danger:
+                        bestshot=attack(target,dis_state)
+                    else:
+                        bestshot=attack(danger,dis_state)
+    return bestshot
+#策略
+def strategy(state_list,myorder):
+    global myscore
+    global plan_flag
+    numh=int(state_list[1][0])
+    numh=np.floor(numh%16/2)
+    dis_state=[[],[]] #[[[x1,y1],[x2,y2]],[]]
+    i=0
+    while i<30:
+        if float(state_list[0][i])!=0:
+            if i%4==0:#先手壶
+                dis_state[0].append([float(state_list[0][i]),float(state_list[0][i+1])])
+            else:
+                dis_state[1].append([float(state_list[0][i]),float(state_list[0][i+1])])
+        i+=2
+    if myorder==str("first"): #先手
+        if myscore>1: #保守策略
+            if numh==0:
+                bestshot=[2.9,-0.0242,0]
+            elif numh<3:
+                target=find_target(dis_state,myorder)
+                if not target:
+                    h_x=numh*1.2-1.8
+                    bestshot=[3.08,h_x,0]
+                else:
+                    if get_dist(target)<4 or target[1]<4.88:
+                        if len(dis_state[0])>0:
+                            bestshot=attack_out(target,dis_state)
+                        else:
+                            bestshot=attack(target,dis_state)
+                    else:
+                        if len(dis_state[1])==1:
+                            h_x=0.6 if dis_state[1][0][0]<2.375 else -0.6
+                            bestshot=[3.08,h_x,0]
+                        else:
+                            midpoint=(dis_state[1][0][0]+dis_state[1][1][0])/2
+                            if np.fabs(dis_state[1][0][0]-dis_state[1][1][0])>0.7:
+                                bestshot=[3.08,midpoint-2.35,0]
+                            else:
+                                h_x=1.1 if midpoint<2.375 else -1.1
+                                bestshot=[3.08,h_x,0]
+            else:
+                target=find_target(dis_state,myorder)
+                if not target:
+                    bestshot=[2.95,-0.0242,0]
+                else:
+                    target2=find_nexttarget(dis_state,myorder,target)
+                    if not target2:
+                        if len(dis_state[0])>0:
+                            bestshot=attack_out(target,dis_state)
+                        else:
+                            if get_dist(target)<2.56:
+                                bestshot=[6.2,target[0]-2.35,0]
+                            else:
+                                obstacles=count_obs(dis_state,target)
+                                if numh==7:
+                                    bestshot=push_center(target)
+                                    bestshot[0]+=0.02
+                                else:
+                                    bestshot=push(target)
+                                    bestshot[0]+=0.2+obstacles[0][1]*0.25
+                    else:
+                        if get_dist(target)>4.08 and target[1]<4.8:
+                            bestshot=attack_out(target2,dis_state)
+                        else:
+                            bestshot=attack_2(target2,target,dis_state)
+        else: #偏进攻策略
+            if numh==0:
+                bestshot=[2.65,-0.0242,0]
+            elif numh==1:
+                if len(dis_state[0])<1:
+                    bestshot=[2.97,-2.03,0]
+                else:
+                    obstacles=count_obs(dis_state,dis_state[0][0])
+                    if obstacles[0][0]==0:
+                        offset=np.fabs(dis_state[0][0][0]-2.375)
+                        if offset<1.4 and dis_state[0][0][1]>7.2:
+                            bestshot=push_center(dis_state[0][0])
+                            offset=0.061-offset*0.01
+                            if dis_state[0][0][0]>2.375:
+                                offset=-offset
+                            bestshot[1]+=offset
+                        else:
+                            bestshot=[2.97,-2.03,0]
+                    else:
+                        bestshot=[2.97,-2.03,0]
+            elif numh==2:
+                target=find_target(dis_state,myorder)
+                if not target:
+                    h_x=numh*1.2-1.8
+                    bestshot=[3.08,h_x,0]
+                else:
+                    if get_dist(target)<4 or target[1]<4.88:
+                        bestshot=attack(target,dis_state)
+                    else:
+                        if len(dis_state[1])==1:
+                            h_x=0.6 if dis_state[1][0][0]<2.375 else -0.6
+                            bestshot=[3.08,h_x,0]
+                        else:
+                            midpoint=(dis_state[1][0][0]+dis_state[1][1][0])/2
+                            if np.fabs(dis_state[1][0][0]-dis_state[1][1][0])>0.7:
+                                bestshot=[3.08,midpoint-2.35,0]
+                            else:
+                                h_x=1.1 if midpoint<2.375 else -1.1
+                                bestshot=[3.08,h_x,0]
+            else:
+                target=find_target(dis_state,myorder)
+                if not target:
+                    bestshot=[2.95,-0.0242,0]
+                else:
+                    target2=find_nexttarget(dis_state,myorder,target)
+                    if not target2:
+                        obstacles=count_obs(dis_state,target)
+                        if obstacles[0][0]==0 and numh==7:
+                            bestshot=push_center(target)
+                            bestshot[0]+=0.02
+                        elif len(dis_state[0])>1:
+                            bestshot=attack_out(target,dis_state)
+                        else:
+                            if get_dist(target)<2.56:
+                                bestshot=[6.2,target[0]-2.35,0]
+                            else:
+                                bestshot=push(target)
+                                bestshot[0]+=0.2+obstacles[0][1]*0.25
+                    else:
+                        if get_dist(target)>4.08 and target[1]<4.8:
+                            bestshot=attack_out(target2,dis_state)
+                        else:
+                            bestshot=attack_2(target2,target,dis_state)
+                   
+        
+    else:  #后手
+        if myscore<1 and int(state_list[1][1])<2 and myscore>-3: #侧向双推进攻策略
+            if numh==0:
+                if len(dis_state[0])>0:
+                    h_x=0.7 if dis_state[0][0][0]<2.375 else -0.7
+                    if dis_state[0][0][1]>7.3:
+                        bestshot=throw([2.375+h_x,dis_state[0][0][1]])
+                        if bestshot[0]<2.405:
+                            bestshot[0]=2.405
+                    else:
+                        bestshot=[2.5,h_x,0]
+                else:
+                    h_x=0.7
+                    bestshot=[2.405,h_x,0]
+            elif numh==1:
+                if len(dis_state[1])<1:
+                    bestshot=[2.97,-2.03,0]
+                    plan_flag=False
+                else:
+                    obstacles=count_obs(dis_state,dis_state[1][0])
+                    offset=np.fabs(dis_state[1][0][0]-2.375)
+                    if obstacles[0][0]>0:
+                        bestshot=[2.97,-2.03,0]
+                        plan_flag=False
+                    elif offset<1.4 and dis_state[1][0][1]>7.2:
+                        bestshot=push_center(dis_state[1][0])
+                        offset=0.061-offset*0.01
+                        if dis_state[1][0][0]>2.375:
+                            offset=-offset
+                        bestshot[1]+=offset
+                        plan_flag=True
+                    else:
+                        bestshot=[2.97,-2.03,0]
+                        plan_flag=False
+            elif numh<7:
+                if numh>4 and len(dis_state[0])>2:
+                    plan_flag=False
+                if plan_flag==True:
+                    mydanger=find_danger(dis_state,str("first"))
+                    if not mydanger:
+                        plan_flag=False
+                    else:
+                        target=find_target(dis_state,myorder)
+                        if not target:
+                            h_x=0.7 if mydanger[0]<2.375 else -0.7
+                            bestshot=throw([2.375+h_x,mydanger[1]])
+                        else:
+                            if np.fabs(mydanger[0]-target[0])<0.29 and target[1]>7:
+                                target2=find_nexttarget(dis_state,myorder,target)
+                                if not target2:
+                                    offset=np.fabs(target[0]-2.375)
+                                    bestshot=push_center(target)
+                                    offset=0.05
+                                    omega=0.5
+                                    if target[0]>2.375:
+                                        offset=-offset
+                                        omega=-0.5
+                                    bestshot[1]+=offset
+                                    bestshot[2]=omega
+                                else:
+                                    target3=find_nexttarget(dis_state,myorder,target2)
+                                    if not target3:
+                                        obstacles=count_obs(dis_state,target2)
+                                        if obstacles[0][0]==0:
+                                            bestshot=push(target2)
+                                            if target2[1]<9:
+                                                obstacles=count_obs(dis_state,target2)
+                                                bestshot[0]+=0.195+obstacles[0][1]*0.2
+                                        else:
+                                            bestshot=attack_2(target2,target,dis_state)
+                                    else:
+                                        obstacles=count_obs(dis_state,target2)
+                                        if obstacles[0][0]==0:
+                                            if np.fabs(target2[1]-target3[1])<np.fabs(target2[0]-target3[0]):
+                                                bestshot=attack_2(target3,target2,dis_state)
+                                            else:
+                                                offset=(target3[0]-target2[0])*0.08
+                                                bestshot=[6.3,target2[0]-2.35+offset,0]
+                                        else:
+                                            obstacles=count_obs(dis_state,target3)
+                                            if obstacles[0][0]==0:
+                                                offset=(target2[0]-target3[0])*0.08
+                                                bestshot=[6.3,target3[0]-2.35+offset,0]
+                                            else:
+                                                bestshot=attack_2(target2,target,dis_state)
+                            else:
+                                target2=find_nexttarget(dis_state,myorder,target)
+                                if not target2:
+                                    if target[1]<8:
+                                        bestshot=attack(target,dis_state)
+                                    else:
+                                        bestshot=push(target)
+                                else:
+                                    if target[1]<7:
+                                        obstacles=count_obs(dis_state,target)
+                                        if obstacles[0][0]==0:
+                                            if np.fabs(target2[1]-target[1])<np.fabs(target2[0]-target[0]):
+                                                bestshot=attack_2(target2,target,dis_state)
+                                            else:
+                                                offset=(target2[0]-target[0])*0.08
+                                                bestshot=[6.3,target[0]-2.35+offset,0]
+                                                if np.sqrt((target2[1]-target[1])**2+(target2[0]-target[0])**2)<0.32:
+                                                    bestshot=push(target)
+                                                    bestshot[0]+=0.2
+                                                    bestshot[1]+=offset
+                                        else:
+                                            bestshot=attack_2(target2,target,dis_state)
+                                    elif target[1]>9.7:
+                                        offset=np.fabs(target[0]-2.375)
+                                        bestshot=push_center(target)
+                                        offset=0.05
+                                        if target[0]>2.375:
+                                            offset=-offset
+                                        bestshot[0]=bestshot[0]-0.01
+                                    else:
+                                        obstacles=count_obs(dis_state,target)
+                                        bestshot=push(target)
+                                        bestshot[0]+=0.195+0.25*obstacles[0][1]
+                if plan_flag==False:
+                    target=find_target(dis_state,myorder)
+                    danger=find_danger(dis_state,myorder)
+                    if not danger:
+                        bestshot=[2.99,-0.0242,0]
+                    elif target==danger:
+                        target2=find_nexttarget(dis_state,myorder,target)
+                        if not target2:
+                            bestshot=attack(target,dis_state)
+                        else:
+                            if is_danger(target2,dis_state):
+                                bestshot=attack_2(target2,target,dis_state)
+                            else:
+                                bestshot=attack(target,dis_state)
+                    else:
+                        obstacles=count_obs(dis_state,target)
+                        if obstacles[0][0]==0:
+                            bestshot=attack_2(danger,target,dis_state)
+                        else:
+                            bestshot=attack(danger,dis_state)
+                if not bestshot:
+                    bestshot=[3.07,-0.0242,0]
+            else:
+                bestshot=lastshot(dis_state,myorder)
+                
+                    
+        elif myscore<-1 and int(state_list[1][1])<5: #复杂布局冒险策略
+            if numh==0:
+                if len(dis_state[0])>0:
+                    h_x=0.55 if dis_state[0][0][0]<2.375 else -0.55
+                else:
+                    h_x=0.55
+                bestshot=[2.5,h_x,0]
+            elif numh==1:
+                h_x=0.6 if dis_state[1][0][0]<2.375 else -0.6
+                bestshot=[2.6,h_x,0]
+            elif numh<4:
+                target=find_target(dis_state,myorder)
+                danger=find_danger(dis_state,myorder)
+                if not danger:
+                    bestshot=[2.99,-0.0242,0]
+                elif target==danger:
+                    target2=find_nexttarget(dis_state,myorder,target)
+                    if not target2:
+                        bestshot=attack(target,dis_state)
+                    else:
+                        bestshot=attack_2(target2,target,dis_state)
+                else:
+                    obstacles=count_obs(dis_state,target)
+                    if obstacles[0][0]==0:
+                        bestshot=attack_2(danger,target,dis_state)
+                    else:
+                        bestshot=attack(danger,dis_state)
+            elif numh<7:
+                bestshot=[]
+                if plan_flag==None:
+                    if len(dis_state[0])<2:
+                        if len(dis_state[1])==0:
+                            plan_flag=False
+                        elif np.fabs(dis_state[1][0][0]-2.375)>1.4:
+                            plan_flag=False
+                        else:
+                            mytarget=[]
+                            for i in range(len(dis_state[1])):
+                                if is_danger(dis_state[1][i],dis_state):
+                                    mytarget=dis_state[1][i]
+                                    break
+                            if not mytarget:
+                                plan_flag=False
+                            else:
+                                offset=np.fabs(mytarget[0]-2.375)
+                                if offset<1.4 and get_dist(mytarget)>4.08:
+                                    bestshot=push_center(mytarget)
+                                    offset=0.06-offset*0.01
+                                    if mytarget[0]>2.375:
+                                        offset=-offset
+                                    bestshot[1]+=offset
+                                    plan_flag=True
+                                elif get_dist(mytarget)<4:
+                                    state_x=0.6 if mytarget[0]<2.375 else -0.6
+                                    bestshot=throw([state_x,mytarget[1]])
+                                    plan_flag=True
+                                else:
+                                    plan_flag=False
+                    else:
+                        plan_flag=False
+                if plan_flag==False:
+                    target=find_target(dis_state,myorder)
+                    danger=find_danger(dis_state,myorder)
+                    if not danger:
+                        bestshot=[2.99,-0.0242,0]
+                    elif target==danger:
+                        target2=find_nexttarget(dis_state,myorder,target)
+                        if not target2:
+                            bestshot=attack(target,dis_state)
+                        else:
+                            if is_danger(target2,dis_state):
+                                bestshot=attack_2(target2,target,dis_state)
+                            else:
+                                bestshot=attack(target,dis_state)
+                    else:
+                        obstacles=count_obs(dis_state,target)
+                        if obstacles[0][0]==0:
+                            bestshot=attack_2(danger,target,dis_state)
+                        else:
+                            bestshot=attack(danger,dis_state)
+                else:
+                    if len(dis_state[1])==0:
+                        plan_flag=False
+                        target=find_target(dis_state,myorder)
+                        danger=find_danger(dis_state,myorder)
+                        if not danger:
+                            bestshot=[2.99,-0.0242,0]
+                        elif target==danger:
+                            target2=find_nexttarget(dis_state,myorder,target)
+                            if not target2:
+                                bestshot=attack(target,dis_state)
+                            else:
+                                bestshot=attack_2(target2,target,dis_state)
+                        else:
+                            obstacles=count_obs(dis_state,target)
+                            if obstacles[0][0]==0:
+                                bestshot=attack_2(danger,target,dis_state)
+                            else:
+                                bestshot=attack(danger,dis_state)
+                    elif not bestshot:
+                        if len(dis_state[0])==0:
+                            state_x=0.6 if dis_state[1][0][0]<2.375 else -0.6
+                            bestshot=throw([state_x,4.88])
+                        elif len(dis_state[0])==1:
+                            if dis_state[0][0][1]<8.2 and is_danger(dis_state[0][0],dis_state):
+                                bestshot=attack(dis_state[0][0],dis_state)
+                            elif np.fabs(dis_state[0][0][0]-2.375)<0.7:
+                                bestshot=[3.065,dis_state[0][0][0]-2.375+1.5,-10]
+                            else:
+                                bestshot=[2.99,-0.0242,0]
+                        else:
+                            target=find_target(dis_state,myorder)
+                            danger=find_danger(dis_state,myorder)
+                            if not danger:
+                                bestshot=[2.99,-0.0242,0]
+                            elif target==danger:
+                                target2=find_nexttarget(dis_state,myorder,target)
+                                if not target2:
+                                    bestshot=attack(target,dis_state)
+                                else:
+                                    bestshot=attack_2(target2,target,dis_state)
+                            else:
+                                obstacles=count_obs(dis_state,target)
+                                if obstacles[0][0]==0:
+                                    bestshot=attack_2(danger,target,dis_state)
+                                else:
+                                    bestshot=attack(danger,dis_state)
+            else:
+                bestshot=lastshot(dis_state,myorder)
+        else: #贴边稳定策略
+            if numh==0:
+                bestshot=[2.97,-2.03,0]
+            elif numh==1:
+                bestshot=[2.97,1.95,0]
+            elif numh<7:
+                danger=find_danger(dis_state,myorder)
+                target=find_target(dis_state,myorder)
+                if not danger:
+                    bestshot=[2.99,-0.0242,0]
+                elif target==danger:
+                    target2=find_nexttarget(dis_state,myorder,target)
+                    if not target2:
+                        bestshot=attack(target,dis_state)
+                    else:
+                        if is_danger(target2,dis_state):
+                            bestshot=attack_2(target2,target,dis_state)
+                        elif target[1]>8:
+                            bestshot=attack_out(target,dis_state)
+                        else:
+                            bestshot=attack(target,dis_state)
+                else:
+                    bestshot=attack_2(danger,target,dis_state)
+            else:
+                bestshot=lastshot(dis_state,myorder)
+    bestshot=list_to_str(bestshot)
+    return bestshot
+while True:
+    ret=str(obj.recv(1024),encoding="utf-8")
+    if ret!='':
+        print("recv:" + ret)
+    messageList = ret.split(" ")
+    if messageList[0] == "NAME":
+        order=messageList[1]
+        if order==str("Player1"):
+            print("玩家1，首局先手")
+        else:
+            print("玩家2，首局后手")
+    if messageList[0]=="ISREADY":
+        time.sleep(0.5)
+        obj.send(bytes("READYOK",encoding="utf-8"))
+        print("send READYOK")
+        obj.send(bytes("NAME 壶履薄冰",encoding="utf-8"))
+        print("send NAME 壶履薄冰")
+    if messageList[0]=="POSITION":
+        if state:
+            state=[]
+        state.append(ret.split(" ")[1:31])
+    else:
+        for i in range(1,len(messageList)):
+            if messageList[i]=="\x00POSITION":
+                if state:
+                    state=[]
+                state.append(ret.split(" ")[i+1:i+31])
+    if messageList[0]=="SETSTATE": 
+        state.append(ret.split(" ")[1:5])
+    else:
+        for i in range(1,len(messageList)):
+            if messageList[i]=="\x00SETSTATE":
+                state.append(ret.split(" ")[i+1:i+5])
+    if messageList[0]=="GO":
+        if int(state[1][0])%2==0:
+            myorder=str("first")
+        else:
+            myorder=str("second")
+        shot=strategy(state,myorder)
+        obj.send(bytes(shot,encoding="utf-8"))
+        print("send:"+shot)
+    else:
+        for i in range(1,len(messageList)):
+            if messageList[i]=="\x00GO":
+                if int(state[1][0])%2==0:
+                    myorder=str("first")
+                else:
+                    myorder=str("second")
+                shot=strategy(state,myorder)
+                obj.send(bytes(shot,encoding="utf-8"))
+                print("send:"+shot)
+    if messageList[0]=="MOTIONINFO":
+        x_coordinate = float(messageList[1])
+        y_coordinate = float(messageList[2])
+        x_velocity = float(messageList[3])
+        y_velocity = float(messageList[4])
+        angular_velocity = float(messageList[5])
+        #obj.send(bytes("SWEEP 4.0",encoding="utf-8"))
+    if messageList[0]=="SCORE":
+        myscore = myscore + int(messageList[1])
+        plan_flag=None
+    if messageList[0] == 'GAMEOVER':
+        exit()
+    else:
+        for i in range(1, len(messageList)):
+            if messageList[i] == '\x00GAMEOVER':
+                exit()
